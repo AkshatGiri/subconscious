@@ -1,10 +1,11 @@
-# Brain-Inspired Memory Engine (subconscious)
+# Subconscious - Human Inspired Memory for Agents
 
 Standalone, harness-agnostic memory engine built with Bun + TypeScript.
 
 ## Why This Exists
 
 Most agent memory systems today rely on one of three patterns:
+
 - stuffing long transcript context into prompts
 - vector-only retrieval with weak structure
 - manual summaries that drift over time
@@ -12,6 +13,7 @@ Most agent memory systems today rely on one of three patterns:
 Those approaches break down with scale: context bloat, stale or contradictory memories, and weak causal/temporal continuity.
 
 Humans handle memory differently. We know enough about the architecture to borrow useful primitives:
+
 - sensory logging of experience
 - short-term/working memory for active tasks
 - long-term semantic, episodic, and procedural memory
@@ -27,6 +29,7 @@ This system has a dedicated **subconscious** loop: a secondary model/process tha
 ## Layered Model
 
 It uses human-inspired layers:
+
 - Layer 0: append-only conversation/document log
 - Layer 1: short-term rolling session summary + working buffer
 - Layer 2: persistent long-term graph memory (semantic / episodic / procedural nodes + typed edges)
@@ -48,6 +51,7 @@ Server starts at `http://localhost:8787` by default.
 ## Core API (Engine)
 
 `MemoryEngine` supports:
+
 - `ingest(conversation | document | fact)`
 - `recall(query, context?)`
 - `search(query, opts?)`
@@ -98,6 +102,7 @@ curl -X POST http://localhost:8787/recall \
 ## Adapter Layer
 
 Implemented adapters:
+
 - `OpenClawMemoryAdapter`
 - `ClaudeCodeMemoryAdapter` (MCP-style tool mapping)
 - `OpenCodeMemoryAdapter`
@@ -116,11 +121,12 @@ const adapter = new OpenClawMemoryAdapter(engine);
 
 adapter.registerWith(openclawApi, {
   includeTools: true,
-  includeHooks: true
+  includeHooks: true,
 });
 ```
 
 `registerWith()` supports two OpenClaw hook styles:
+
 - callback registrars like `onSessionStart(handler)`, `onBeforeAgentRun(handler)`, etc.
 - generic `registerHook(name, handler)` with names:
   `conversation_message`, `session_start`, `before_agent_run`, `after_agent_run`, `context_overflow`, `session_end`
@@ -143,6 +149,7 @@ MEMORY_LLM_TEMPERATURE=0.1
 ## Config
 
 Useful env vars:
+
 - `MEMORY_DB_PATH` (default `./data/memory.db`)
 - `MEMORY_WORKING_SIZE` (default `7`)
 - `MEMORY_SHORT_TERM_BUFFER_SIZE` (default `20`)
@@ -160,6 +167,7 @@ Decay behavior defaults to score-only weakening (no auto-archive). Recalled memo
 ## Development
 
 Scripts:
+
 - `bun run dev` (hot reload REST server)
 - `bun run start`
 - `bun run status`
@@ -170,6 +178,7 @@ Scripts:
 - `bun run diagrams` (build + serve in one command)
 
 Project layout:
+
 - `src/core` engine
 - `src/subconscious` extraction + background worker
 - `src/storage` sqlite graph/log store
@@ -181,6 +190,7 @@ Project layout:
 ## Diagrams
 
 Mermaid sources live in:
+
 - `docs/diagrams/process.mmd`
 - `docs/diagrams/data-model.mmd`
 
@@ -192,4 +202,5 @@ bun run diagrams:serve
 ```
 
 Then open:
+
 - `http://localhost:8890`
