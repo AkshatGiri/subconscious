@@ -2,7 +2,31 @@
 
 Standalone, harness-agnostic memory engine built with Bun + TypeScript.
 
-It mirrors human-like memory layers:
+## Why This Exists
+
+Most agent memory systems today rely on one of three patterns:
+- stuffing long transcript context into prompts
+- vector-only retrieval with weak structure
+- manual summaries that drift over time
+
+Those approaches break down with scale: context bloat, stale or contradictory memories, and weak causal/temporal continuity.
+
+Humans handle memory differently. We know enough about the architecture to borrow useful primitives:
+- sensory logging of experience
+- short-term/working memory for active tasks
+- long-term semantic, episodic, and procedural memory
+- consolidation and replay (especially during rest/sleep)
+- forgetting curves and recall-based reinforcement
+
+We do not know every detail of human memory, but we can implement this structure now, measure behavior, and tune.
+
+## Core Differentiator
+
+This system has a dedicated **subconscious** loop: a secondary model/process that continuously extracts, organizes, links, consolidates, and prunes memory in the background. During recall, it activates relevant graph paths and reinforces recalled memories, similar to how human memories are reactivated and reconsolidated.
+
+## Layered Model
+
+It uses human-inspired layers:
 - Layer 0: append-only conversation/document log
 - Layer 1: short-term rolling session summary + working buffer
 - Layer 2: persistent long-term graph memory (semantic / episodic / procedural nodes + typed edges)
