@@ -80,6 +80,25 @@ Implemented adapters:
 
 All adapters share a common interface and tool definitions via `BaseMemoryAdapter`.
 
+OpenClaw adapter now supports both tools and lifecycle hook wiring:
+
+```ts
+import { MemoryEngine, OpenClawMemoryAdapter } from "./src";
+
+const engine = new MemoryEngine();
+const adapter = new OpenClawMemoryAdapter(engine);
+
+adapter.registerWith(openclawApi, {
+  includeTools: true,
+  includeHooks: true
+});
+```
+
+`registerWith()` supports two OpenClaw hook styles:
+- callback registrars like `onSessionStart(handler)`, `onBeforeAgentRun(handler)`, etc.
+- generic `registerHook(name, handler)` with names:
+  `conversation_message`, `session_start`, `before_agent_run`, `after_agent_run`, `context_overflow`, `session_end`
+
 ## Optional LLM Subconscious
 
 By default, extraction/summarization is heuristic and fully local.
