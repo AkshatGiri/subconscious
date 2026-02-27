@@ -37,7 +37,10 @@ if (candidates.length === 0) {
 }
 
 candidates.sort();
-const sessionFile = candidates[candidates.length - 1] ?? candidates[0];
+const sessionFile = candidates.at(-1);
+if (!sessionFile) {
+  throw new Error(`No session JSONL found for session_id=${sessionId}`);
+}
 const sessionText = await Bun.file(sessionFile).text();
 
 let sessionTimestamp = "";

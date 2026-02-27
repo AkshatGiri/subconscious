@@ -107,6 +107,7 @@ Implemented adapters:
 - `ClaudeCodeMemoryAdapter` (MCP-style tool mapping)
 - `OpenCodeMemoryAdapter`
 - `CodexMemoryAdapter`
+- `PiMemoryAdapter`
 - `RestMemoryAdapter`
 
 All adapters share a common interface and tool definitions via `BaseMemoryAdapter`.
@@ -130,6 +131,49 @@ adapter.registerWith(openclawApi, {
 - callback registrars like `onSessionStart(handler)`, `onBeforeAgentRun(handler)`, etc.
 - generic `registerHook(name, handler)` with names:
   `conversation_message`, `session_start`, `before_agent_run`, `after_agent_run`, `context_overflow`, `session_end`
+
+Pi adapter follows the same pattern and adds simple direct helpers:
+
+```ts
+import { MemoryEngine, PiMemoryAdapter } from "./src";
+
+const engine = new MemoryEngine();
+const adapter = new PiMemoryAdapter(engine);
+
+const context = await adapter.beforeResponse("pi-session-1", "what do you remember about me?");
+await adapter.afterResponse("pi-session-1", [
+  { role: "user", content: "I prefer Bun for local tools." },
+  { role: "assistant", content: "Noted." }
+]);
+```
+
+For official pi extension runtime (`pi.on(...)` + `pi.registerTool(...)`), use:
+
+```ts
+import { MemoryEngine, PiMemoryAdapter } from "./src";
+
+export default function (pi: {
+  on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) => void;
+  registerTool: (tool: Record<string, unknown>) => void;
+}) {
+  const engine = new MemoryEngine();
+  const adapter = new PiMemoryAdapter(engine);
+
+  adapter.registerWithPiExtension(pi, {
+    includeTools: true,
+    includeLifecycle: true,
+    injectMode: "message"
+  });
+}
+```
+
+`registerWithPiExtension()` wires:
+
+- `session_start` (seed startup recall context)
+- `before_agent_start` (inject working memory before response)
+- `agent_end` (ingest turn messages)
+- `session_before_compact` (trigger consolidation)
+- `session_shutdown` (final consolidation/cleanup)
 
 ## Optional LLM Subconscious
 

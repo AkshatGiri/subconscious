@@ -5,7 +5,8 @@ export {
   OpenClawMemoryAdapter,
   ClaudeCodeMemoryAdapter,
   OpenCodeMemoryAdapter,
-  CodexMemoryAdapter
+  CodexMemoryAdapter,
+  PiMemoryAdapter
 } from "./adapters";
 export { RestMemoryAdapter } from "./api";
 export type * from "./types";
