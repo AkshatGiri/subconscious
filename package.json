@@ -12,7 +12,8 @@
     "diagrams:serve": "bun run scripts/serve-diagrams.ts",
     "diagrams": "bun run diagrams:build && bun run diagrams:serve",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "session:export": "bun run scripts/export-session.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
