@@ -64,6 +64,46 @@ afterEach(async () => {
 });
 
 describe("MemoryEngine", () => {
+  test("returns recent conversation with session fallback behavior", async () => {
+    const { engine } = createHarness();
+
+    await engine.ingest({
+      kind: "conversation",
+      messages: [
+        {
+          sessionId: "session-recent",
+          role: "user",
+          content: "Message one from user"
+        },
+        {
+          sessionId: "session-recent",
+          role: "assistant",
+          content: "Message two from assistant"
+        }
+      ]
+    });
+
+    const globalRecent = engine.getRecentConversation({ limit: 2 });
+    expect(globalRecent.length).toBe(2);
+    const recentText = globalRecent.map((message) => message.content).join(" ");
+    expect(recentText).toContain("Message one");
+    expect(recentText).toContain("Message two");
+
+    const fallbackRecent = engine.getRecentConversation({
+      sessionId: "brand-new-session",
+      limit: 2,
+      fallbackGlobal: true
+    });
+    expect(fallbackRecent.length).toBe(2);
+
+    const noFallbackRecent = engine.getRecentConversation({
+      sessionId: "brand-new-session",
+      limit: 2,
+      fallbackGlobal: false
+    });
+    expect(noFallbackRecent.length).toBe(0);
+  });
+
   test("recalls ingested facts", async () => {
     const { engine } = createHarness();
 

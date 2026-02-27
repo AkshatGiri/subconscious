@@ -5,6 +5,7 @@ import type {
   MemoryNode,
   SubconsciousLLM
 } from "../types";
+import { createLogger } from "../utils/logger";
 
 interface OpenAICompatibleOptions {
   endpoint: string;
@@ -12,6 +13,8 @@ interface OpenAICompatibleOptions {
   model: string;
   temperature: number;
 }
+
+type EndpointMode = "chat_completions" | "responses" | "completions";
 
 const extractJson = (text: string): string | null => {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i);
@@ -29,42 +32,171 @@ const extractJson = (text: string): string | null => {
 };
 
 export class OpenAICompatibleLLM implements SubconsciousLLM {
+  private readonly logger = createLogger("subconscious-llm", Bun.env.MEMORY_LOG_LEVEL);
+
   constructor(private readonly options: OpenAICompatibleOptions) {}
+
+  private endpointMode(): EndpointMode {
+    if (this.options.endpoint.includes("/responses")) {
+      return "responses";
+    }
+
+    if (this.options.endpoint.includes("/completions") && !this.options.endpoint.includes("/chat/")) {
+      return "completions";
+    }
+
+    return "chat_completions";
+  }
+
+  private extractResponsesText(payload: unknown): string | null {
+    const output = (payload as { output?: unknown })?.output;
+    if (!Array.isArray(output)) {
+      return null;
+    }
+
+    const parts: string[] = [];
+
+    for (const item of output) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const content = (item as { content?: unknown }).content;
+      if (!Array.isArray(content)) {
+        continue;
+      }
+
+      for (const part of content) {
+        if (!part || typeof part !== "object") {
+          continue;
+        }
+
+        const text = (part as { text?: unknown }).text;
+        if (typeof text === "string") {
+          parts.push(text);
+        }
+      }
+    }
+
+    const joined = parts.join("\n").trim();
+    return joined || null;
+  }
+
+  private extractChatCompletionsText(payload: unknown): string | null {
+    return (
+      (payload as {
+        choices?: Array<{
+          message?: {
+            content?: string;
+          };
+        }>;
+      }).choices?.[0]?.message?.content ?? null
+    );
+  }
+
+  private extractCompletionsText(payload: unknown): string | null {
+    return (
+      (payload as {
+        choices?: Array<{
+          text?: string;
+        }>;
+      }).choices?.[0]?.text ?? null
+    );
+  }
 
   private async complete(system: string, user: string): Promise<string | null> {
     if (!this.options.apiKey) {
+      this.logger.warn("skipping LLM call: api key missing");
       return null;
     }
 
-    const response = await fetch(this.options.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.options.apiKey}`
-      },
-      body: JSON.stringify({
-        model: this.options.model,
-        temperature: this.options.temperature,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ]
-      })
+    const mode = this.endpointMode();
+
+    this.logger.debug("sending LLM request", {
+      model: this.options.model,
+      endpoint: this.options.endpoint,
+      mode
     });
 
-    if (!response.ok) {
+    const body =
+      mode === "responses"
+        ? {
+            model: this.options.model,
+            temperature: this.options.temperature,
+            input: [
+              {
+                role: "system",
+                content: [{ type: "input_text", text: system }]
+              },
+              {
+                role: "user",
+                content: [{ type: "input_text", text: user }]
+              }
+            ]
+          }
+        : mode === "completions"
+          ? {
+              model: this.options.model,
+              temperature: this.options.temperature,
+              prompt: `${system}\n\n${user}`
+            }
+          : {
+              model: this.options.model,
+              temperature: this.options.temperature,
+              response_format: { type: "json_object" as const },
+              messages: [
+                { role: "system", content: system },
+                { role: "user", content: user }
+              ]
+            };
+
+    let response: Response;
+    try {
+      response = await fetch(this.options.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.options.apiKey}`
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      this.logger.warn("LLM request network failure", {
+        error: error instanceof Error ? error.message : String(error)
+      });
       return null;
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-    };
-    return payload.choices?.[0]?.message?.content ?? null;
+    const responseText = await response.text();
+    let payload: unknown = null;
+
+    try {
+      payload = responseText ? (JSON.parse(responseText) as unknown) : null;
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      this.logger.warn("LLM request failed", {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText.slice(0, 500)
+      });
+      return null;
+    }
+
+    const content =
+      mode === "responses"
+        ? this.extractResponsesText(payload)
+        : mode === "completions"
+          ? this.extractCompletionsText(payload)
+          : this.extractChatCompletionsText(payload);
+
+    this.logger.debug("LLM request completed", {
+      hasContent: Boolean(content)
+    });
+
+    return content;
   }
 
   async extract(payload: {

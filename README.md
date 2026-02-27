@@ -74,6 +74,7 @@ Server starts at `http://localhost:8787` by default.
 - `POST /ingest/fact`
 - `POST /recall`
 - `GET /search?q=...&layer=all`
+- `GET /conversation/recent?limit=6&sessionId=...`
 - `GET /memory/:id`
 - `GET /trace/:id`
 - `POST /consolidate`
@@ -169,11 +170,50 @@ export default function (pi: {
 
 `registerWithPiExtension()` wires:
 
-- `session_start` (seed startup recall context)
+- `session_start` (seed startup context from recall + recent sensory tail)
 - `before_agent_start` (inject working memory before response)
 - `agent_end` (ingest turn messages)
 - `session_before_compact` (trigger consolidation)
 - `session_shutdown` (final consolidation/cleanup)
+
+### Pi CLI Extension (Practical Runtime Setup)
+
+Pi runs extensions in its own runtime, while this engine uses Bun (`bun:sqlite`).  
+Use the included bridge extension to call the memory REST API:
+
+- Extension file: `extensions/pi-subconscious.js`
+- Flow: `pi extension -> HTTP -> Bun memory engine (with subconscious loop)`
+
+Run it in two terminals:
+
+```bash
+# Terminal 1: memory engine + verbose subconscious logs
+MEMORY_LLM_ENABLED=true \
+MEMORY_LLM_API_KEY=YOUR_KEY \
+MEMORY_LOG_LEVEL=debug \
+bun run start
+```
+
+```bash
+# Terminal 2: pi with extension
+SUBCONSCIOUS_API_URL=http://127.0.0.1:8787 \
+SUBCONSCIOUS_EXT_LOG_LEVEL=debug \
+pi -e ./extensions/pi-subconscious.js
+```
+
+Optional extension envs:
+
+- `SUBCONSCIOUS_INJECT_MODE=message|system_prompt` (default `message`)
+- `SUBCONSCIOUS_MESSAGE_DISPLAY=true|false` (default `false`)
+- `SUBCONSCIOUS_TOOL_SET=minimal|full` (default `minimal`)
+- `SUBCONSCIOUS_RECALL_DETAIL=summary|full` (default `summary`)
+
+To install permanently for `/reload` auto-discovery:
+
+```bash
+mkdir -p ~/.pi/agent/extensions
+cp ./extensions/pi-subconscious.js ~/.pi/agent/extensions/subconscious.js
+```
 
 ## Optional LLM Subconscious
 
@@ -195,6 +235,7 @@ MEMORY_LLM_TEMPERATURE=0.1
 Useful env vars:
 
 - `MEMORY_DB_PATH` (default `./data/memory.db`)
+- `MEMORY_LOG_LEVEL` (default `warn`; set `debug` for detailed subconscious logs)
 - `MEMORY_WORKING_SIZE` (default `7`)
 - `MEMORY_SHORT_TERM_BUFFER_SIZE` (default `20`)
 - `MEMORY_CANDIDATE_POOL_SIZE` (default `64`)

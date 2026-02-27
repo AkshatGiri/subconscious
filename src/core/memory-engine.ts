@@ -9,6 +9,7 @@ import {
 } from "../subconscious/extraction";
 import type {
   ConsolidationReport,
+  ConversationMessage,
   EngineStatus,
   FactIngestion,
   IngestInput,
@@ -27,6 +28,7 @@ import type {
   SubconsciousLLM
 } from "../types";
 import { createId } from "../utils/id";
+import { createLogger } from "../utils/logger";
 import { summarizeMessages, textSimilarity, topTokens } from "../utils/text";
 import { curvedDecayFactor, now, recencyScore } from "../utils/time";
 import { buildHashEmbedding, cosineSimilarity } from "../utils/vector";
@@ -51,6 +53,15 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const dedupe = (values: string[]): string[] => [...new Set(values.filter(Boolean))];
 
+const isSubconsciousEchoText = (value: string): boolean => {
+  const normalized = value.trim();
+  return (
+    normalized.startsWith("Working Memory for query:") ||
+    normalized.startsWith("[Subconscious Memory]") ||
+    normalized.includes("\nWorking Memory for query:")
+  );
+};
+
 const makeEdgeId = (fromId: string, toId: string, type: MemoryEdgeType): string =>
   `edge_${type}_${fromId}_${toId}`;
 
@@ -62,6 +73,7 @@ export class MemoryEngine {
   private readonly store: SQLiteMemoryStore;
   private readonly subconscious: SubconsciousAgent;
   private readonly llm?: SubconsciousLLM;
+  private readonly logger: ReturnType<typeof createLogger>;
   private readonly startedAt: number;
 
   private consolidationRunning = false;
@@ -71,6 +83,7 @@ export class MemoryEngine {
     this.config = withConfig(configOverrides);
     this.store = new SQLiteMemoryStore(this.config.dbPath);
     this.startedAt = now();
+    this.logger = createLogger("memory-engine", this.config.logLevel);
 
     if (this.config.llm.enabled && this.config.llm.provider === "openai_compatible") {
       this.llm = new OpenAICompatibleLLM({
@@ -92,17 +105,25 @@ export class MemoryEngine {
       {
         queuePollIntervalMs: this.config.queuePollIntervalMs,
         consolidateIntervalMs: this.config.consolidateIntervalMs,
-        decayIntervalMs: this.config.decayIntervalMs
+        decayIntervalMs: this.config.decayIntervalMs,
+        logLevel: this.config.logLevel
       }
     );
 
     this.subconscious.start();
+    this.logger.info("engine started", {
+      dbPath: this.config.dbPath,
+      llmEnabled: Boolean(this.llm),
+      logLevel: this.config.logLevel
+    });
   }
 
   async shutdown(): Promise<void> {
+    this.logger.info("engine shutdown requested");
     this.subconscious.stop();
     await this.subconscious.flush();
     this.store.close();
+    this.logger.info("engine shutdown complete");
   }
 
   async ingest(input: IngestInput): Promise<IngestResult> {
@@ -110,6 +131,10 @@ export class MemoryEngine {
       if (input.messages.length === 0) {
         return { conversationEntryIds: [], extractedMemoryIds: [] };
       }
+
+      this.logger.debug("ingest conversation", {
+        messageCount: input.messages.length
+      });
 
       const grouped = new Map<string, typeof input.messages>();
       for (const message of input.messages) {
@@ -129,6 +154,12 @@ export class MemoryEngine {
         this.subconscious.enqueueConversation(sessionId, ids);
       }
 
+      this.logger.info("ingested conversation entries", {
+        entryCount: allConversationIds.length,
+        sessionCount: grouped.size,
+        queueDepth: this.subconscious.getQueueDepth()
+      });
+
       return {
         conversationEntryIds: allConversationIds,
         extractedMemoryIds: []
@@ -138,6 +169,12 @@ export class MemoryEngine {
     if (input.kind === "document") {
       const documentId = input.document.id ?? createId("doc");
       const createdAt = input.document.timestamp ?? now();
+
+      this.logger.debug("ingest document", {
+        documentId,
+        hasTitle: Boolean(input.document.title),
+        contentLength: input.document.content.length
+      });
 
       this.store.insertDocument({
         id: documentId,
@@ -199,6 +236,11 @@ export class MemoryEngine {
         createdIds.push(memory.id);
       }
 
+      this.logger.info("ingested document memories", {
+        documentId,
+        memoryCount: createdIds.length
+      });
+
       return {
         conversationEntryIds: [],
         extractedMemoryIds: createdIds
@@ -206,6 +248,9 @@ export class MemoryEngine {
     }
 
     const factIds = await this.ingestFact(input.fact);
+    this.logger.info("ingested fact memories", {
+      memoryCount: factIds.length
+    });
     return {
       conversationEntryIds: [],
       extractedMemoryIds: factIds
@@ -213,7 +258,15 @@ export class MemoryEngine {
   }
 
   async recall(query: string, options?: RecallOptions): Promise<RecallResult> {
+    this.logger.debug("recall requested", {
+      sessionId: options?.sessionId,
+      limit: options?.limit ?? this.config.workingMemorySize
+    });
+
     if (this.subconscious.getQueueDepth() > 0) {
+      this.logger.debug("flushing queue before recall", {
+        queueDepth: this.subconscious.getQueueDepth()
+      });
       await this.subconscious.flush();
     }
 
@@ -225,7 +278,9 @@ export class MemoryEngine {
 
     const baseCandidates = this.store.memoryCandidates(this.config.candidatePoolSize);
     const scoredBase = baseCandidates
-      .filter((memory) => memory.status === "active")
+      .filter(
+        (memory) => memory.status === "active" && !isSubconsciousEchoText(memory.content)
+      )
       .map((memory) => {
         const semantic = cosineSimilarity(queryEmbedding, memory.embedding);
         const lexical = textSimilarity(query, `${memory.title} ${memory.content}`);
@@ -342,6 +397,13 @@ export class MemoryEngine {
 
     const context = this.formatWorkingMemoryContext(query, selected, options?.detailLevel ?? "summary");
 
+    this.logger.info("recall completed", {
+      sessionId,
+      selected: selected.length,
+      totalCandidates: candidates.length,
+      expandedCandidates: expanded.length
+    });
+
     return {
       query,
       sessionId,
@@ -363,7 +425,11 @@ export class MemoryEngine {
     }
 
     if (layer === "all" || layer === "long_term") {
-      results.push(...this.store.searchMemories(query, limit));
+      const longTerm = this.store.searchMemories(query, limit).filter((result) => {
+        const memory = this.store.getMemory(result.id);
+        return !memory || !isSubconsciousEchoText(memory.content);
+      });
+      results.push(...longTerm);
     }
 
     if ((layer === "all" || layer === "short_term") && opts?.sessionId) {
@@ -383,6 +449,28 @@ export class MemoryEngine {
     }
 
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  getRecentConversation(options?: {
+    sessionId?: string;
+    limit?: number;
+    fallbackGlobal?: boolean;
+  }): ConversationMessage[] {
+    const requestedLimit = options?.limit;
+    const numericLimit =
+      typeof requestedLimit === "number" && Number.isFinite(requestedLimit)
+        ? requestedLimit
+        : 8;
+    const limit = clamp(Math.floor(numericLimit), 1, 100);
+
+    if (options?.sessionId) {
+      const scoped = this.store.getRecentConversation(limit, options.sessionId);
+      if (scoped.length > 0 || options.fallbackGlobal === false) {
+        return scoped;
+      }
+    }
+
+    return this.store.getRecentConversation(limit);
   }
 
   get(memoryId: string): GetMemoryResult | null {
@@ -463,6 +551,7 @@ export class MemoryEngine {
 
   async consolidate(): Promise<ConsolidationReport> {
     if (this.consolidationRunning) {
+      this.logger.debug("consolidation skipped: already running");
       return {
         merged: 0,
         superseded: 0,
@@ -473,6 +562,7 @@ export class MemoryEngine {
     }
 
     this.consolidationRunning = true;
+    this.logger.debug("consolidation started");
 
     try {
       const memories = this.store.listMemories("active", 500);
@@ -569,6 +659,7 @@ export class MemoryEngine {
         }
       }
 
+      this.logger.info("consolidation finished", report);
       return report;
     } finally {
       this.consolidationRunning = false;
@@ -585,6 +676,7 @@ export class MemoryEngine {
     memory.strength = this.config.minStrength;
     memory.updatedAt = now();
     this.store.updateMemory(memory);
+    this.logger.info("memory forgotten", { memoryId });
     return true;
   }
 
@@ -597,6 +689,7 @@ export class MemoryEngine {
     memory.status = "archived";
     memory.updatedAt = now();
     this.store.updateMemory(memory);
+    this.logger.info("memory archived", { memoryId });
     return true;
   }
 
@@ -611,6 +704,7 @@ export class MemoryEngine {
     memory.lastAccessed = now();
     memory.updatedAt = now();
     this.store.updateMemory(memory);
+    this.logger.debug("memory reinforced", { memoryId, amount });
     return true;
   }
 
@@ -698,8 +792,14 @@ export class MemoryEngine {
   }
 
   private async processConversationTask(sessionId: string, messageIds: string[]): Promise<void> {
+    this.logger.debug("processing conversation task", {
+      sessionId,
+      messageCount: messageIds.length
+    });
+
     const messages = this.store.getConversationMessages(messageIds);
     if (messages.length === 0) {
+      this.logger.debug("conversation task had no messages", { sessionId });
       return;
     }
 
@@ -710,8 +810,23 @@ export class MemoryEngine {
       llm: this.llm
     });
 
+    const filteredDrafts = drafts.filter((draft) => !isSubconsciousEchoText(draft.content));
+
+    this.logger.debug("extracted memory drafts", {
+      sessionId,
+      draftCount: drafts.length,
+      filteredDraftCount: filteredDrafts.length
+    });
+
+    if (filteredDrafts.length < drafts.length) {
+      this.logger.debug("dropped subconscious echo drafts", {
+        sessionId,
+        dropped: drafts.length - filteredDrafts.length
+      });
+    }
+
     const created: MemoryNode[] = [];
-    for (const draft of drafts) {
+    for (const draft of filteredDrafts) {
       const memory = this.createMemoryFromDraft({
         draft,
         createdFrom: "conversation",
@@ -736,6 +851,10 @@ export class MemoryEngine {
     }
 
     await this.refreshSessionSummary(sessionId, messages);
+    this.logger.info("conversation task completed", {
+      sessionId,
+      extractedMemories: created.length
+    });
   }
 
   private async refreshSessionSummary(
@@ -772,6 +891,12 @@ export class MemoryEngine {
       ...current,
       summary: summary || current.summary,
       updatedAt: now()
+    });
+
+    this.logger.debug("session summary refreshed", {
+      sessionId,
+      usedLLM: Boolean(this.llm),
+      summaryLength: (summary || current.summary).length
     });
   }
 
@@ -920,6 +1045,11 @@ export class MemoryEngine {
         "document",
         sources.filter((source) => source.sourceKind === "document").map((source) => source.sourceId)
       );
+      this.logger.info("contradiction resolved by supersede", {
+        existingId: existing.id,
+        incomingId: incoming.id,
+        score: Number(score.toFixed(3))
+      });
       return true;
     }
 
@@ -933,6 +1063,11 @@ export class MemoryEngine {
           source: "contradiction_flag",
           requiresReview: true
         }
+      });
+      this.logger.info("contradiction flagged for review", {
+        existingId: existing.id,
+        incomingId: incoming.id,
+        score: Number(score.toFixed(3))
       });
       return true;
     }
@@ -1028,14 +1163,18 @@ export class MemoryEngine {
 
   private async runDecayCycle(): Promise<void> {
     if (this.decayRunning) {
+      this.logger.debug("decay skipped: already running");
       return;
     }
 
     this.decayRunning = true;
+    this.logger.debug("decay cycle started");
 
     try {
       const nowMs = now();
       const memories = this.store.listMemories("active", 2000);
+      let decayed = 0;
+      let archived = 0;
 
       for (const memory of memories) {
         const baseline = Math.max(memory.lastAccessed ?? 0, memory.updatedAt);
@@ -1058,10 +1197,23 @@ export class MemoryEngine {
         memory.updatedAt = nowMs;
         if (shouldArchive) {
           memory.status = "archived";
+          archived += 1;
         }
 
         this.store.updateMemory(memory);
+        decayed += 1;
       }
+
+      this.logger.info("decay cycle finished", {
+        scanned: memories.length,
+        decayed,
+        archived
+      });
+    } catch (error) {
+      this.logger.error("decay cycle failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     } finally {
       this.decayRunning = false;
     }

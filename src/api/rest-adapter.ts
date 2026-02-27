@@ -1,5 +1,6 @@
 import { MemoryEngine } from "../core/memory-engine";
 import { BaseMemoryAdapter } from "../adapters/base-adapter";
+import { createLogger } from "../utils/logger";
 
 export interface RestAdapterOptions {
   host?: string;
@@ -33,6 +34,7 @@ const readJson = async (request: Request): Promise<Record<string, unknown>> => {
 
 export class RestMemoryAdapter {
   private readonly adapter: BaseMemoryAdapter;
+  private readonly logger = createLogger("memory-rest", Bun.env.MEMORY_LOG_LEVEL);
 
   constructor(private readonly engine: MemoryEngine) {
     this.adapter = new BaseMemoryAdapter(engine);
@@ -42,6 +44,8 @@ export class RestMemoryAdapter {
     const host = options?.host ?? "0.0.0.0";
     const port = options?.port ?? Number(Bun.env.PORT ?? 8787);
     const cors = options?.cors ?? true;
+
+    this.logger.info("starting REST adapter", { host, port, cors });
 
     return Bun.serve({
       hostname: host,
@@ -53,6 +57,10 @@ export class RestMemoryAdapter {
         }
 
         const url = new URL(request.url);
+        this.logger.debug("request", {
+          method: request.method,
+          path: url.pathname
+        });
 
         try {
           const response = await this.route(request, url);
@@ -172,6 +180,25 @@ export class RestMemoryAdapter {
           limit
         })
       );
+    }
+
+    if (request.method === "GET" && pathname === "/conversation/recent") {
+      const sessionId = url.searchParams.get("sessionId") ?? undefined;
+      const limitParam = url.searchParams.get("limit");
+      const parsedLimit = limitParam ? Number(limitParam) : undefined;
+      const fallbackGlobalParam = url.searchParams.get("fallbackGlobal");
+      const fallbackGlobal = fallbackGlobalParam ? fallbackGlobalParam !== "false" : true;
+
+      const messages = this.engine.getRecentConversation({
+        sessionId,
+        limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+        fallbackGlobal
+      });
+
+      return json({
+        messages,
+        count: messages.length
+      });
     }
 
     if (request.method === "GET" && pathname.startsWith("/memory/")) {

@@ -1,5 +1,6 @@
 export interface EngineConfig {
   dbPath: string;
+  logLevel: "silent" | "error" | "warn" | "info" | "debug";
   shortTermBufferSize: number;
   shortTermSummaryMessages: number;
   workingMemorySize: number;
@@ -29,6 +30,7 @@ export interface EngineConfig {
 
 export const defaultConfig: EngineConfig = {
   dbPath: Bun.env.MEMORY_DB_PATH ?? "./data/memory.db",
+  logLevel: (Bun.env.MEMORY_LOG_LEVEL as EngineConfig["logLevel"] | undefined) ?? "warn",
   shortTermBufferSize: Number(Bun.env.MEMORY_SHORT_TERM_BUFFER_SIZE ?? 20),
   shortTermSummaryMessages: Number(Bun.env.MEMORY_SHORT_TERM_SUMMARY_MESSAGES ?? 12),
   workingMemorySize: Number(Bun.env.MEMORY_WORKING_SIZE ?? 7),

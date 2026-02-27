@@ -1,6 +1,7 @@
 import type {
   AdapterMessage,
   AdapterSession,
+  ConversationMessage,
   MemoryAdapter,
   ToolDefinition
 } from "../types";
@@ -34,7 +35,17 @@ export class BaseMemoryAdapter implements MemoryAdapter {
       detailLevel: "summary"
     });
 
-    return recalled.context;
+    const recentMessages = this.engine.getRecentConversation({
+      sessionId: session.sessionId,
+      limit: 6,
+      fallbackGlobal: true
+    });
+    const sensoryTail = this.formatSensoryTail(recentMessages);
+
+    return [recalled.context, sensoryTail]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   async onBeforeAgentRun(prompt: string, session: AdapterSession): Promise<string> {
@@ -268,5 +279,25 @@ export class BaseMemoryAdapter implements MemoryAdapter {
       default:
         throw new Error(`Unknown memory tool: ${name}`);
     }
+  }
+
+  private formatSensoryTail(messages: ConversationMessage[]): string {
+    const lines = messages
+      .map((message) => {
+        const content = message.content.trim().replace(/\s+/g, " ");
+        if (!content) {
+          return null;
+        }
+
+        const clipped = content.length > 220 ? `${content.slice(0, 220)}...` : content;
+        return `- ${message.role}: ${clipped}`;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (lines.length === 0) {
+      return "";
+    }
+
+    return `Recent Sensory Tail:\n${lines.join("\n")}`;
   }
 }

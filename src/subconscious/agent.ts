@@ -1,3 +1,5 @@
+import { createLogger, type LogLevel } from "../utils/logger";
+
 interface ConversationTask {
   kind: "conversation";
   sessionId: string;
@@ -14,10 +16,12 @@ interface SubconsciousAgentOptions {
   queuePollIntervalMs: number;
   consolidateIntervalMs: number;
   decayIntervalMs: number;
+  logLevel?: LogLevel;
 }
 
 export class SubconsciousAgent {
   private readonly queue: ConversationTask[] = [];
+  private readonly logger: ReturnType<typeof createLogger>;
   private queueTimer: Timer | null = null;
   private consolidateTimer: Timer | null = null;
   private decayTimer: Timer | null = null;
@@ -26,7 +30,9 @@ export class SubconsciousAgent {
   constructor(
     private readonly hooks: SubconsciousHooks,
     private readonly options: SubconsciousAgentOptions
-  ) {}
+  ) {
+    this.logger = createLogger("subconscious", options.logLevel);
+  }
 
   start(): void {
     if (!this.queueTimer) {
@@ -49,6 +55,12 @@ export class SubconsciousAgent {
         this.options.decayIntervalMs
       );
     }
+
+    this.logger.info("started background loops", {
+      queuePollIntervalMs: this.options.queuePollIntervalMs,
+      consolidateIntervalMs: this.options.consolidateIntervalMs,
+      decayIntervalMs: this.options.decayIntervalMs
+    });
   }
 
   stop(): void {
@@ -66,6 +78,8 @@ export class SubconsciousAgent {
       clearInterval(this.decayTimer);
       this.decayTimer = null;
     }
+
+    this.logger.info("stopped background loops");
   }
 
   enqueueConversation(sessionId: string, messageIds: string[]): void {
@@ -77,6 +91,12 @@ export class SubconsciousAgent {
       kind: "conversation",
       sessionId,
       messageIds
+    });
+
+    this.logger.debug("enqueued conversation task", {
+      sessionId,
+      messageCount: messageIds.length,
+      queueDepth: this.queue.length
     });
   }
 
@@ -102,7 +122,23 @@ export class SubconsciousAgent {
 
     this.processing = true;
     try {
+      this.logger.debug("processing task", {
+        kind: task.kind,
+        sessionId: task.sessionId,
+        messageCount: task.messageIds.length,
+        queueDepth: this.queue.length
+      });
       await this.hooks.processConversationTask(task);
+      this.logger.debug("processed task", {
+        sessionId: task.sessionId,
+        queueDepth: this.queue.length
+      });
+    } catch (error) {
+      this.logger.error("task processing failed", {
+        error: error instanceof Error ? error.message : String(error),
+        sessionId: task.sessionId
+      });
+      throw error;
     } finally {
       this.processing = false;
     }

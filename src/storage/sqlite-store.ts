@@ -278,15 +278,23 @@ export class SQLiteMemoryStore {
       }));
   }
 
-  getRecentConversation(sessionId: string, limit = 20): ConversationMessage[] {
-    const rows = this.db
-      .query(
-        `SELECT * FROM conversation_entries
-         WHERE session_id = ?
-         ORDER BY created_at DESC
-         LIMIT ?`
-      )
-      .all(sessionId, limit) as ConversationRow[];
+  getRecentConversation(limit = 20, sessionId?: string): ConversationMessage[] {
+    const rows = sessionId
+      ? (this.db
+          .query(
+            `SELECT * FROM conversation_entries
+             WHERE session_id = ?
+             ORDER BY created_at DESC
+             LIMIT ?`
+          )
+          .all(sessionId, limit) as ConversationRow[])
+      : (this.db
+          .query(
+            `SELECT * FROM conversation_entries
+             ORDER BY created_at DESC
+             LIMIT ?`
+          )
+          .all(limit) as ConversationRow[]);
 
     return rows
       .toReversed()

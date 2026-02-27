@@ -61,6 +61,30 @@ afterEach(async () => {
 });
 
 describe("PiMemoryAdapter", () => {
+  test("session start context includes recent sensory tail from prior activity", async () => {
+    const { engine } = createHarness();
+    const adapter = new PiMemoryAdapter(engine);
+
+    await adapter.afterResponse("pi-prior", [
+      {
+        role: "user",
+        content: "My name is Akshat and we were fixing startup context."
+      },
+      {
+        role: "assistant",
+        content: "Noted. Next step is to inject recent messages on session start."
+      }
+    ]);
+
+    const startupContext = await adapter.onSessionStart({
+      sessionId: "pi-fresh-session",
+      channel: "pi"
+    });
+
+    expect(startupContext).toContain("Recent Sensory Tail:");
+    expect(startupContext).toContain("inject recent messages on session start");
+  });
+
   test("registers tools and callback-style hooks", async () => {
     const { engine } = createHarness();
     const adapter = new PiMemoryAdapter(engine);
