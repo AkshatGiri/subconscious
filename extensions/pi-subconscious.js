@@ -25,8 +25,25 @@ const messageDisplay = asBool(process.env.SUBCONSCIOUS_MESSAGE_DISPLAY, false);
 const toolSet = process.env.SUBCONSCIOUS_TOOL_SET === "full" ? "full" : "minimal";
 const defaultDetail = process.env.SUBCONSCIOUS_RECALL_DETAIL === "full" ? "full" : "summary";
 const logLevel = asLogLevel(process.env.SUBCONSCIOUS_EXT_LOG_LEVEL, "info");
+const traceIO = asBool(process.env.SUBCONSCIOUS_EXT_TRACE_IO, false);
+const traceMaxCharsRaw = Number(process.env.SUBCONSCIOUS_EXT_TRACE_MAX_CHARS ?? 6000);
+const traceMaxChars =
+  Number.isFinite(traceMaxCharsRaw) && traceMaxCharsRaw > 0
+    ? Math.floor(traceMaxCharsRaw)
+    : 6000;
+const traceMaxArrayItemsRaw = Number(process.env.SUBCONSCIOUS_EXT_TRACE_MAX_ARRAY_ITEMS ?? 20);
+const traceMaxArrayItems =
+  Number.isFinite(traceMaxArrayItemsRaw) && traceMaxArrayItemsRaw > 0
+    ? Math.floor(traceMaxArrayItemsRaw)
+    : 20;
+const traceMaxObjectKeysRaw = Number(process.env.SUBCONSCIOUS_EXT_TRACE_MAX_OBJECT_KEYS ?? 30);
+const traceMaxObjectKeys =
+  Number.isFinite(traceMaxObjectKeysRaw) && traceMaxObjectKeysRaw > 0
+    ? Math.floor(traceMaxObjectKeysRaw)
+    : 30;
 
 const startupContextBySession = new Map();
+let traceRequestCounter = 0;
 
 const log = (level, message, meta) => {
   if (LEVEL_WEIGHT[level] > LEVEL_WEIGHT[logLevel]) {
@@ -60,8 +77,82 @@ const parseBody = async (response) => {
   }
 };
 
+const clipTraceString = (value) => {
+  if (value.length <= traceMaxChars) {
+    return value;
+  }
+
+  const remaining = value.length - traceMaxChars;
+  return `${value.slice(0, traceMaxChars)}... [truncated ${remaining} chars]`;
+};
+
+const clipTraceValue = (value, depth = 0) => {
+  if (depth > 6) {
+    return "[truncated depth]";
+  }
+
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return clipTraceString(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const clipped = value
+      .slice(0, traceMaxArrayItems)
+      .map((entry) => clipTraceValue(entry, depth + 1));
+
+    if (value.length > traceMaxArrayItems) {
+      clipped.push(`[+${value.length - traceMaxArrayItems} more items]`);
+    }
+
+    return clipped;
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    const clippedEntries = entries
+      .slice(0, traceMaxObjectKeys)
+      .map(([key, entry]) => [key, clipTraceValue(entry, depth + 1)]);
+
+    if (entries.length > traceMaxObjectKeys) {
+      clippedEntries.push([
+        "__truncated_keys__",
+        `[+${entries.length - traceMaxObjectKeys} more keys]`
+      ]);
+    }
+
+    return Object.fromEntries(clippedEntries);
+  }
+
+  return String(value);
+};
+
+const trace = (message, payload) => {
+  if (!traceIO) {
+    return;
+  }
+
+  log("info", `[trace] ${message}`, clipTraceValue(payload));
+};
+
 const request = async (method, path, body) => {
+  const requestId = ++traceRequestCounter;
   const url = `${apiBase}${path}`;
+  trace("request", {
+    requestId,
+    method,
+    path,
+    url,
+    body
+  });
+
   const response = await fetch(url, {
     method,
     headers: {
@@ -73,10 +164,22 @@ const request = async (method, path, body) => {
   const payload = await parseBody(response);
 
   if (!response.ok) {
+    trace("response_error", {
+      requestId,
+      status: response.status,
+      statusText: response.statusText,
+      payload
+    });
     const detail = payload && typeof payload === "object" && "error" in payload ? payload.error : payload;
     throw new Error(`HTTP ${response.status} ${response.statusText}: ${String(detail ?? "unknown error")}`);
   }
 
+  trace("response_ok", {
+    requestId,
+    status: response.status,
+    statusText: response.statusText,
+    payload
+  });
   return payload;
 };
 
@@ -246,7 +349,8 @@ const registerMemoryTools = (pi) => {
           query: { type: "string" },
           sessionId: { type: "string" },
           limit: { type: "number" },
-          detailLevel: { type: "string", enum: ["summary", "full"] }
+          detailLevel: { type: "string", enum: ["summary", "full"] },
+          includeEmbedding: { type: "boolean" }
         },
         required: ["query"]
       },
@@ -258,7 +362,8 @@ const registerMemoryTools = (pi) => {
           detailLevel:
             params.detailLevel === "full" || params.detailLevel === "summary"
               ? params.detailLevel
-              : defaultDetail
+              : defaultDetail,
+          includeEmbedding: params.includeEmbedding === true
         })
     },
     {
@@ -617,6 +722,10 @@ export default function subconsciousExtension(pi) {
     messageDisplay,
     toolSet,
     defaultDetail,
-    logLevel
+    logLevel,
+    traceIO,
+    traceMaxChars,
+    traceMaxArrayItems,
+    traceMaxObjectKeys
   });
 }

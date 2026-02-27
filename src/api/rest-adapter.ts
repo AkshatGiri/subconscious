@@ -1,6 +1,7 @@
 import { MemoryEngine } from "../core/memory-engine";
 import { BaseMemoryAdapter } from "../adapters/base-adapter";
 import { createLogger } from "../utils/logger";
+import type { RecallResult } from "../types";
 
 export interface RestAdapterOptions {
   host?: string;
@@ -162,7 +163,8 @@ export class RestMemoryAdapter {
             : "summary"
       });
 
-      return json(result);
+      const includeEmbedding = body.includeEmbedding === true;
+      return json(this.toRecallPayload(result, includeEmbedding));
     }
 
     if (request.method === "GET" && pathname === "/search") {
@@ -256,5 +258,29 @@ export class RestMemoryAdapter {
     }
 
     return json({ error: "Not found" }, 404);
+  }
+
+  private toRecallPayload(result: RecallResult, includeEmbedding: boolean): unknown {
+    if (includeEmbedding) {
+      return result;
+    }
+
+    const payload = structuredClone(result) as unknown as Record<string, unknown>;
+    const items = Array.isArray(payload.items) ? payload.items : [];
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const memory = (item as { memory?: unknown }).memory;
+      if (!memory || typeof memory !== "object") {
+        continue;
+      }
+
+      delete (memory as { embedding?: unknown }).embedding;
+    }
+
+    return payload;
   }
 }

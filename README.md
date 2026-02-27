@@ -100,6 +100,9 @@ curl -X POST http://localhost:8787/recall \
   -d '{"query":"what runtime preference exists?","sessionId":"s1"}'
 ```
 
+`/recall` omits memory embeddings by default to keep payloads compact.  
+Pass `"includeEmbedding": true` only when you explicitly need raw vectors for debugging.
+
 ## Adapter Layer
 
 Implemented adapters:
@@ -198,6 +201,7 @@ bun run start
 # Terminal 2: pi with extension
 SUBCONSCIOUS_API_URL=http://127.0.0.1:8787 \
 SUBCONSCIOUS_EXT_LOG_LEVEL=debug \
+SUBCONSCIOUS_EXT_TRACE_IO=true \
 pi -e ./extensions/pi-subconscious.js
 ```
 
@@ -207,6 +211,10 @@ Optional extension envs:
 - `SUBCONSCIOUS_MESSAGE_DISPLAY=true|false` (default `false`)
 - `SUBCONSCIOUS_TOOL_SET=minimal|full` (default `minimal`)
 - `SUBCONSCIOUS_RECALL_DETAIL=summary|full` (default `summary`)
+- `SUBCONSCIOUS_EXT_TRACE_IO=true|false` (default `false`; logs all extension<->memory API I/O)
+- `SUBCONSCIOUS_EXT_TRACE_MAX_CHARS=<n>` (default `6000` per string field)
+- `SUBCONSCIOUS_EXT_TRACE_MAX_ARRAY_ITEMS=<n>` (default `20`)
+- `SUBCONSCIOUS_EXT_TRACE_MAX_OBJECT_KEYS=<n>` (default `30`)
 
 To install permanently for `/reload` auto-discovery:
 

@@ -299,4 +299,44 @@ describe("PiMemoryAdapter", () => {
     });
     expect(recall.items.length).toBeGreaterThan(0);
   });
+
+  test("memory_recall tool omits embeddings by default", async () => {
+    const { engine } = createHarness();
+    const adapter = new PiMemoryAdapter(engine);
+
+    await adapter.afterResponse("pi-tool-recall", [
+      {
+        role: "user",
+        content: "I prefer Bun for scripting tasks."
+      }
+    ]);
+
+    const compact = (await adapter.executeTool("memory_recall", {
+      query: "what runtime do I prefer?",
+      sessionId: "pi-tool-recall"
+    })) as {
+      items?: Array<{
+        memory?: {
+          embedding?: number[];
+        };
+      }>;
+    };
+
+    expect((compact.items?.length ?? 0) > 0).toBe(true);
+    expect(compact.items?.[0]?.memory?.embedding).toBeUndefined();
+
+    const verbose = (await adapter.executeTool("memory_recall", {
+      query: "what runtime do I prefer?",
+      sessionId: "pi-tool-recall",
+      includeEmbedding: true
+    })) as {
+      items?: Array<{
+        memory?: {
+          embedding?: number[];
+        };
+      }>;
+    };
+
+    expect(Array.isArray(verbose.items?.[0]?.memory?.embedding)).toBe(true);
+  });
 });

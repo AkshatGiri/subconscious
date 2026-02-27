@@ -3,6 +3,7 @@ import type {
   AdapterSession,
   ConversationMessage,
   MemoryAdapter,
+  RecallResult,
   ToolDefinition
 } from "../types";
 import { MemoryEngine } from "../core/memory-engine";
@@ -96,7 +97,8 @@ export class BaseMemoryAdapter implements MemoryAdapter {
           properties: {
             query: { type: "string" },
             sessionId: { type: "string" },
-            limit: { type: "number" }
+            limit: { type: "number" },
+            includeEmbedding: { type: "boolean" }
           },
           required: ["query"]
         }
@@ -235,7 +237,8 @@ export class BaseMemoryAdapter implements MemoryAdapter {
           detailLevel: "summary"
         });
 
-        return result;
+        const includeEmbedding = args.includeEmbedding === true;
+        return this.toToolRecallResult(result, includeEmbedding);
       }
       case "memory_search":
         return this.engine.search(String(args.query ?? ""), {
@@ -299,5 +302,29 @@ export class BaseMemoryAdapter implements MemoryAdapter {
     }
 
     return `Recent Sensory Tail:\n${lines.join("\n")}`;
+  }
+
+  private toToolRecallResult(result: RecallResult, includeEmbedding: boolean): unknown {
+    if (includeEmbedding) {
+      return result;
+    }
+
+    const payload = structuredClone(result) as unknown as Record<string, unknown>;
+    const items = Array.isArray(payload.items) ? payload.items : [];
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const memory = (item as { memory?: unknown }).memory;
+      if (!memory || typeof memory !== "object") {
+        continue;
+      }
+
+      delete (memory as { embedding?: unknown }).embedding;
+    }
+
+    return payload;
   }
 }
