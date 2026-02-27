@@ -1,4 +1,4 @@
-# Brain-Inspired Memory Engine (memowy2)
+# Brain-Inspired Memory Engine (subconscious)
 
 Standalone, harness-agnostic memory engine built with Bun + TypeScript.
 
@@ -30,6 +30,7 @@ Server starts at `http://localhost:8787` by default.
 - `get(memoryId)`
 - `trace(memoryId)`
 - `consolidate()`
+- `archive(memoryId)`
 - `forget(memoryId)`
 - `reinforce(memoryId)`
 - `associate(a, b, edge)`
@@ -48,6 +49,7 @@ Server starts at `http://localhost:8787` by default.
 - `GET /memory/:id`
 - `GET /trace/:id`
 - `POST /consolidate`
+- `POST /archive/:id`
 - `POST /forget/:id`
 - `POST /reinforce/:id`
 - `POST /associate`
@@ -122,7 +124,14 @@ Useful env vars:
 - `MEMORY_SHORT_TERM_BUFFER_SIZE` (default `20`)
 - `MEMORY_CANDIDATE_POOL_SIZE` (default `64`)
 - `MEMORY_GRAPH_EXPANSION_DEPTH` (default `2`)
-- `MEMORY_DECAY_HALF_LIFE_HOURS` (default `48`)
+- `MEMORY_DECAY_HALF_LIFE_HOURS` (default `336`)
+- `MEMORY_DECAY_CURVE_SHAPE` (default `1.35`)
+- `MEMORY_DECAY_AUTO_ARCHIVE` (default `false`)
+- `MEMORY_RECALL_REFRESH_BASE_BOOST` (default `0.14`)
+- `MEMORY_RECALL_REFRESH_MAX_BOOST` (default `0.42`)
+- `MEMORY_RECALL_REFRESH_WINDOW_HOURS` (default `720`)
+
+Decay behavior defaults to score-only weakening (no auto-archive). Recalled memories get a strong refresh boost, scaled by staleness.
 
 ## Development
 
@@ -132,6 +141,9 @@ Scripts:
 - `bun run status`
 - `bun run typecheck`
 - `bun run test`
+- `bun run diagrams:build` (generate `docs/diagrams/index.html` from Mermaid source)
+- `bun run diagrams:serve` (serve diagram viewer at `http://localhost:8890`)
+- `bun run diagrams` (build + serve in one command)
 
 Project layout:
 - `src/core` engine
@@ -141,3 +153,19 @@ Project layout:
 - `src/api` REST adapter/server
 - `tests` bun tests
 - `docs` architecture notes
+
+## Diagrams
+
+Mermaid sources live in:
+- `docs/diagrams/process.mmd`
+- `docs/diagrams/data-model.mmd`
+
+Render them with code:
+
+```bash
+bun run diagrams:build
+bun run diagrams:serve
+```
+
+Then open:
+- `http://localhost:8890`

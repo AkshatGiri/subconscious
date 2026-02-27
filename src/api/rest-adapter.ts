@@ -195,6 +195,11 @@ export class RestMemoryAdapter {
       return json({ success: this.engine.forget(id) });
     }
 
+    if (request.method === "POST" && pathname.startsWith("/archive/")) {
+      const id = pathname.replace("/archive/", "");
+      return json({ success: this.engine.archive(id) });
+    }
+
     if (request.method === "POST" && pathname.startsWith("/reinforce/")) {
       const id = pathname.replace("/reinforce/", "");
       const body = await readJson(request);

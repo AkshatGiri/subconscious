@@ -1,0 +1,71 @@
+erDiagram
+  CONVERSATION_ENTRIES {
+    text id PK
+    text session_id
+    text role
+    text content
+    text channel
+    text agent
+    text speaker
+    integer created_at
+    text metadata_json
+  }
+
+  SESSION_STATE {
+    text session_id PK
+    text summary
+    text buffer_message_ids_json
+    integer updated_at
+  }
+
+  DOCUMENTS {
+    text id PK
+    text source_id
+    text title
+    text content
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORIES {
+    text id PK
+    text type
+    text title
+    text content
+    text topics_json
+    text categories_json
+    text context_json
+    real strength
+    integer recall_count
+    integer last_accessed
+    integer created_at
+    integer updated_at
+    text created_from
+    real confidence
+    text status
+    text superseded_by
+    text embedding_json
+    text metadata_json
+  }
+
+  MEMORY_EDGES {
+    text id PK
+    text from_id FK
+    text to_id FK
+    text type
+    real weight
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORY_SOURCES {
+    text memory_id FK
+    text source_kind
+    text source_id
+    integer created_at
+  }
+
+  MEMORIES ||--o{ MEMORY_EDGES : from_to_refs
+  MEMORIES ||--o{ MEMORY_SOURCES : has_provenance
+  CONVERSATION_ENTRIES ||--o{ MEMORY_SOURCES : conversation_source
+  DOCUMENTS ||--o{ MEMORY_SOURCES : document_source

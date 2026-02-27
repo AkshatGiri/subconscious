@@ -1,5 +1,5 @@
 {
-  "name": "memowy2",
+  "name": "subconscious",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -8,6 +8,9 @@
     "start": "bun run index.ts serve",
     "status": "bun run index.ts status",
     "demo": "bun run src/examples/demo.ts",
+    "diagrams:build": "bun run scripts/build-diagrams.ts",
+    "diagrams:serve": "bun run scripts/serve-diagrams.ts",
+    "diagrams": "bun run diagrams:build && bun run diagrams:serve",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { unlinkSync, existsSync } from "node:fs";
 import { MemoryEngine } from "../src/core/memory-engine";
+import type { EngineConfig } from "../src/config";
 
 interface Harness {
   engine: MemoryEngine;
@@ -9,20 +10,30 @@ interface Harness {
 
 const harnesses: Harness[] = [];
 
-const createHarness = (): Harness => {
+const createHarness = (overrides?: Partial<EngineConfig>): Harness => {
   const dbPath = `./data/test-${crypto.randomUUID()}.db`;
-  const engine = new MemoryEngine({
-    dbPath,
+  const baseLlm: EngineConfig["llm"] = {
+    enabled: false,
+    provider: "none",
+    endpoint: "",
+    apiKey: "",
+    model: "",
+    temperature: 0
+  };
+
+  const base: Partial<EngineConfig> = {
     queuePollIntervalMs: 10,
     consolidateIntervalMs: 999_999_999,
-    decayIntervalMs: 999_999_999,
+    decayIntervalMs: 999_999_999
+  };
+
+  const engine = new MemoryEngine({
+    dbPath,
+    ...base,
+    ...overrides,
     llm: {
-      enabled: false,
-      provider: "none",
-      endpoint: "",
-      apiKey: "",
-      model: "",
-      temperature: 0
+      ...baseLlm,
+      ...(overrides?.llm ?? {})
     }
   });
 
@@ -178,5 +189,45 @@ describe("MemoryEngine", () => {
 
     const report = await engine.consolidate();
     expect(report.merged).toBeGreaterThanOrEqual(1);
+  });
+
+  test("decays score without auto-archive and strongly refreshes on recall", async () => {
+    const { engine } = createHarness({
+      decayIntervalMs: 20,
+      decayHalfLifeHours: 0.00003,
+      decayCurveShape: 1.35,
+      autoArchiveOnDecay: false,
+      recallRefreshBaseBoost: 0.14,
+      recallRefreshMaxBoost: 0.42
+    });
+
+    const ingest = await engine.ingest({
+      kind: "fact",
+      fact: {
+        title: "Refresh Test",
+        type: "semantic",
+        content: "User prefers Bun for backend tooling and workflows.",
+        topics: ["bun", "backend"],
+        categories: ["preference"],
+        confidence: 0.95
+      }
+    });
+
+    const memoryId = ingest.extractedMemoryIds[0];
+    expect(memoryId).toBeDefined();
+
+    await Bun.sleep(260);
+
+    const before = engine.get(String(memoryId));
+    expect(before?.memory.status).toBe("active");
+    const beforeStrength = before?.memory.strength ?? 0;
+
+    await engine.recall("what runtime does the user prefer", {
+      sessionId: "refresh-session"
+    });
+
+    const after = engine.get(String(memoryId));
+    expect(after?.memory.status).toBe("active");
+    expect(after?.memory.strength ?? 0).toBeGreaterThan(beforeStrength + 0.1);
   });
 });

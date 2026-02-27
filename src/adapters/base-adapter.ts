@@ -182,6 +182,17 @@ export class BaseMemoryAdapter implements MemoryAdapter {
         }
       },
       {
+        name: "memory_archive",
+        description: "Manually archive a memory node.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            memoryId: { type: "string" }
+          },
+          required: ["memoryId"]
+        }
+      },
+      {
         name: "memory_forget",
         description: "Mark a memory for forgetting (status set to forgotten).",
         inputSchema: {
@@ -245,6 +256,10 @@ export class BaseMemoryAdapter implements MemoryAdapter {
             String(args.memoryId ?? ""),
             args.amount ? Number(args.amount) : undefined
           )
+        };
+      case "memory_archive":
+        return {
+          success: this.engine.archive(String(args.memoryId ?? ""))
         };
       case "memory_forget":
         return {

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memory Engine Diagrams</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --surface: #ffffff;
+        --text: #101828;
+        --muted: #475467;
+        --border: #d0d5dd;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        background: radial-gradient(circle at top left, #d9e7ff, var(--bg) 34%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+
+      p {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
+
+      .diagram-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 8px 20px rgba(16, 24, 40, 0.07);
+      }
+
+      .diagram-card h2 {
+        margin-top: 0;
+        text-transform: capitalize;
+      }
+
+      .diagram-card details {
+        margin-bottom: 12px;
+      }
+
+      .diagram-card summary {
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      pre code {
+        display: block;
+        overflow-x: auto;
+        background: #101828;
+        color: #f2f4f7;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 12px;
+      }
+
+      .mermaid {
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Memory Engine Diagrams</h1>
+        <p>Generated from Mermaid source files in docs/diagrams/*.mmd</p>
+      </header>
+      
+      <section class="diagram-card">
+        <h2>data model</h2>
+        <details>
+          <summary>Show Mermaid Source</summary>
+          <pre><code>erDiagram
+  CONVERSATION_ENTRIES {
+    text id PK
+    text session_id
+    text role
+    text content
+    text channel
+    text agent
+    text speaker
+    integer created_at
+    text metadata_json
+  }
+
+  SESSION_STATE {
+    text session_id PK
+    text summary
+    text buffer_message_ids_json
+    integer updated_at
+  }
+
+  DOCUMENTS {
+    text id PK
+    text source_id
+    text title
+    text content
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORIES {
+    text id PK
+    text type
+    text title
+    text content
+    text topics_json
+    text categories_json
+    text context_json
+    real strength
+    integer recall_count
+    integer last_accessed
+    integer created_at
+    integer updated_at
+    text created_from
+    real confidence
+    text status
+    text superseded_by
+    text embedding_json
+    text metadata_json
+  }
+
+  MEMORY_EDGES {
+    text id PK
+    text from_id FK
+    text to_id FK
+    text type
+    real weight
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORY_SOURCES {
+    text memory_id FK
+    text source_kind
+    text source_id
+    integer created_at
+  }
+
+  MEMORIES ||--o{ MEMORY_EDGES : from_to_refs
+  MEMORIES ||--o{ MEMORY_SOURCES : has_provenance
+  CONVERSATION_ENTRIES ||--o{ MEMORY_SOURCES : conversation_source
+  DOCUMENTS ||--o{ MEMORY_SOURCES : document_source</code></pre>
+        </details>
+        <pre class="mermaid">erDiagram
+  CONVERSATION_ENTRIES {
+    text id PK
+    text session_id
+    text role
+    text content
+    text channel
+    text agent
+    text speaker
+    integer created_at
+    text metadata_json
+  }
+
+  SESSION_STATE {
+    text session_id PK
+    text summary
+    text buffer_message_ids_json
+    integer updated_at
+  }
+
+  DOCUMENTS {
+    text id PK
+    text source_id
+    text title
+    text content
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORIES {
+    text id PK
+    text type
+    text title
+    text content
+    text topics_json
+    text categories_json
+    text context_json
+    real strength
+    integer recall_count
+    integer last_accessed
+    integer created_at
+    integer updated_at
+    text created_from
+    real confidence
+    text status
+    text superseded_by
+    text embedding_json
+    text metadata_json
+  }
+
+  MEMORY_EDGES {
+    text id PK
+    text from_id FK
+    text to_id FK
+    text type
+    real weight
+    integer created_at
+    text metadata_json
+  }
+
+  MEMORY_SOURCES {
+    text memory_id FK
+    text source_kind
+    text source_id
+    integer created_at
+  }
+
+  MEMORIES ||--o{ MEMORY_EDGES : from_to_refs
+  MEMORIES ||--o{ MEMORY_SOURCES : has_provenance
+  CONVERSATION_ENTRIES ||--o{ MEMORY_SOURCES : conversation_source
+  DOCUMENTS ||--o{ MEMORY_SOURCES : document_source</pre>
+      </section>
+    
+
+      <section class="diagram-card">
+        <h2>process</h2>
+        <details>
+          <summary>Show Mermaid Source</summary>
+          <pre><code>flowchart TD
+  A["Harness/Adapter Hook&lt;br/&gt;onConversationMessage or onAfterAgentRun"] --&gt; B["engine.ingest(conversation)"]
+  B --&gt; C["Store raw messages&lt;br/&gt;conversation_entries"]
+  B --&gt; D["Update short-term state&lt;br/&gt;session_state summary + buffer"]
+  B --&gt; E["Enqueue subconscious task&lt;br/&gt;(sessionId, messageIds)"]
+
+  E --&gt;|queue poll interval| F["SubconsciousAgent.workQueue"]
+  F --&gt; G["processConversationTask"]
+  G --&gt; H["extractMemories&lt;br/&gt;(heuristics + optional LLM)"]
+  H --&gt; I["Create memory nodes"]
+  I --&gt; J["Persist long-term memory&lt;br/&gt;memories + memory_sources"]
+  G --&gt; K["associateAndResolve&lt;br/&gt;related_to/reinforces/contradicts/supersedes edges"]
+  K --&gt; L["Persist graph edges&lt;br/&gt;memory_edges"]
+  G --&gt; M["refreshSessionSummary&lt;br/&gt;(optional LLM summarize)"]
+
+  N["Periodic consolidate timer"] --&gt; O["consolidate()&lt;br/&gt;merge duplicates, archive superseded"]
+  P["Periodic decay timer"] --&gt; Q["runDecayCycle()&lt;br/&gt;strength decay, archive weak nodes"]
+
+  R["Harness/Adapter Hook&lt;br/&gt;onBeforeAgentRun/onSessionStart"] --&gt; S["engine.recall(query)"]
+  S --&gt; T["Flush pending queue first"]
+  T --&gt; U["Candidate retrieval&lt;br/&gt;(vector + lexical)"]
+  U --&gt; V["Graph expansion&lt;br/&gt;neighborhood traversal"]
+  V --&gt; W["Salience scoring&lt;br/&gt;relevance + recency + strength + associative"]
+  W --&gt; X["Select diverse top 7"]
+  X --&gt; Y["Reinforce recalled memories"]
+  Y --&gt; Z["Return formatted working-memory context"]</code></pre>
+        </details>
+        <pre class="mermaid">flowchart TD
+  A["Harness/Adapter Hook<br/>onConversationMessage or onAfterAgentRun"] --> B["engine.ingest(conversation)"]
+  B --> C["Store raw messages<br/>conversation_entries"]
+  B --> D["Update short-term state<br/>session_state summary + buffer"]
+  B --> E["Enqueue subconscious task<br/>(sessionId, messageIds)"]
+
+  E -->|queue poll interval| F["SubconsciousAgent.workQueue"]
+  F --> G["processConversationTask"]
+  G --> H["extractMemories<br/>(heuristics + optional LLM)"]
+  H --> I["Create memory nodes"]
+  I --> J["Persist long-term memory<br/>memories + memory_sources"]
+  G --> K["associateAndResolve<br/>related_to/reinforces/contradicts/supersedes edges"]
+  K --> L["Persist graph edges<br/>memory_edges"]
+  G --> M["refreshSessionSummary<br/>(optional LLM summarize)"]
+
+  N["Periodic consolidate timer"] --> O["consolidate()<br/>merge duplicates, archive superseded"]
+  P["Periodic decay timer"] --> Q["runDecayCycle()<br/>strength decay, archive weak nodes"]
+
+  R["Harness/Adapter Hook<br/>onBeforeAgentRun/onSessionStart"] --> S["engine.recall(query)"]
+  S --> T["Flush pending queue first"]
+  T --> U["Candidate retrieval<br/>(vector + lexical)"]
+  U --> V["Graph expansion<br/>neighborhood traversal"]
+  V --> W["Salience scoring<br/>relevance + recency + strength + associative"]
+  W --> X["Select diverse top 7"]
+  X --> Y["Reinforce recalled memories"]
+  Y --> Z["Return formatted working-memory context"]</pre>
+      </section>
+    
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

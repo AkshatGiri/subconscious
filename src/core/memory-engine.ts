@@ -28,7 +28,7 @@ import type {
 } from "../types";
 import { createId } from "../utils/id";
 import { summarizeMessages, textSimilarity, topTokens } from "../utils/text";
-import { decayFactor, now, recencyScore } from "../utils/time";
+import { curvedDecayFactor, now, recencyScore } from "../utils/time";
 import { buildHashEmbedding, cosineSimilarity } from "../utils/vector";
 
 interface EdgeCreationInput {
@@ -53,6 +53,8 @@ const dedupe = (values: string[]): string[] => [...new Set(values.filter(Boolean
 
 const makeEdgeId = (fromId: string, toId: string, type: MemoryEdgeType): string =>
   `edge_${type}_${fromId}_${toId}`;
+
+const hourMs = 60 * 60 * 1000;
 
 export class MemoryEngine {
   readonly config: EngineConfig;
@@ -326,11 +328,12 @@ export class MemoryEngine {
     }
 
     for (const entry of selected) {
+      const refreshBoost = this.computeRecallRefreshBoost(entry.memory, nowMs);
       const updated: MemoryNode = {
         ...entry.memory,
         recallCount: entry.memory.recallCount + 1,
         lastAccessed: nowMs,
-        strength: clamp(entry.memory.strength + 0.07, this.config.minStrength, 1.5),
+        strength: clamp(entry.memory.strength + refreshBoost, this.config.minStrength, 1.5),
         updatedAt: nowMs
       };
       this.store.updateMemory(updated);
@@ -580,6 +583,18 @@ export class MemoryEngine {
 
     memory.status = "forgotten";
     memory.strength = this.config.minStrength;
+    memory.updatedAt = now();
+    this.store.updateMemory(memory);
+    return true;
+  }
+
+  archive(memoryId: string): boolean {
+    const memory = this.store.getMemory(memoryId);
+    if (!memory) {
+      return false;
+    }
+
+    memory.status = "archived";
     memory.updatedAt = now();
     this.store.updateMemory(memory);
     return true;
@@ -999,6 +1014,18 @@ export class MemoryEngine {
     return chunks;
   }
 
+  private computeRecallRefreshBoost(memory: MemoryNode, nowMs: number): number {
+    const baseline = Math.max(memory.lastAccessed ?? 0, memory.updatedAt);
+    const elapsedHours = Math.max(0, nowMs - baseline) / hourMs;
+    const window = Math.max(1, this.config.recallRefreshWindowHours);
+    const staleness = clamp(elapsedHours / window, 0, 1);
+
+    return (
+      this.config.recallRefreshBaseBoost +
+      (this.config.recallRefreshMaxBoost - this.config.recallRefreshBaseBoost) * staleness
+    );
+  }
+
   private async runDecayCycle(): Promise<void> {
     if (this.decayRunning) {
       return;
@@ -1011,20 +1038,25 @@ export class MemoryEngine {
       const memories = this.store.listMemories("active", 2000);
 
       for (const memory of memories) {
-        const baseline = memory.lastAccessed ?? memory.updatedAt;
+        const baseline = Math.max(memory.lastAccessed ?? 0, memory.updatedAt);
         const elapsedMs = Math.max(0, nowMs - baseline);
-        const factor = decayFactor(elapsedMs, this.config.decayHalfLifeHours);
+        const factor = curvedDecayFactor(
+          elapsedMs,
+          this.config.decayHalfLifeHours,
+          this.config.decayCurveShape
+        );
 
         const nextStrength = clamp(memory.strength * factor, this.config.minStrength, 1.5);
-        const archived = nextStrength < this.config.archiveStrengthThreshold;
+        const shouldArchive =
+          this.config.autoArchiveOnDecay && nextStrength < this.config.archiveStrengthThreshold;
 
-        if (Math.abs(nextStrength - memory.strength) < 0.005 && !archived) {
+        if (Math.abs(nextStrength - memory.strength) < 0.005 && !shouldArchive) {
           continue;
         }
 
         memory.strength = nextStrength;
         memory.updatedAt = nowMs;
-        if (archived) {
+        if (shouldArchive) {
           memory.status = "archived";
         }
 

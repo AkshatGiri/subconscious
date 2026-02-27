@@ -18,3 +18,20 @@ export const decayFactor = (elapsedMs: number, halfLifeHours: number): number =>
 
   return Math.pow(0.5, elapsedMs / halfLifeMs);
 };
+
+export const curvedDecayFactor = (
+  elapsedMs: number,
+  halfLifeHours: number,
+  curveShape: number
+): number => {
+  const halfLifeMs = halfLifeHours * 60 * 60 * 1000;
+  if (halfLifeMs <= 0) {
+    return 1;
+  }
+
+  const shape = Number.isFinite(curveShape) && curveShape > 0 ? curveShape : 1;
+  const ratio = Math.max(0, elapsedMs) / halfLifeMs;
+
+  // Weibull-like curve anchored so factor=0.5 at elapsed=halfLife.
+  return Math.exp(-Math.log(2) * Math.pow(ratio, shape));
+};

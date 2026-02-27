@@ -5,8 +5,13 @@ export interface EngineConfig {
   workingMemorySize: number;
   embeddingDimensions: number;
   decayHalfLifeHours: number;
+  decayCurveShape: number;
+  autoArchiveOnDecay: boolean;
   minStrength: number;
   archiveStrengthThreshold: number;
+  recallRefreshBaseBoost: number;
+  recallRefreshMaxBoost: number;
+  recallRefreshWindowHours: number;
   consolidateIntervalMs: number;
   decayIntervalMs: number;
   queuePollIntervalMs: number;
@@ -28,9 +33,14 @@ export const defaultConfig: EngineConfig = {
   shortTermSummaryMessages: Number(Bun.env.MEMORY_SHORT_TERM_SUMMARY_MESSAGES ?? 12),
   workingMemorySize: Number(Bun.env.MEMORY_WORKING_SIZE ?? 7),
   embeddingDimensions: Number(Bun.env.MEMORY_EMBEDDING_DIMS ?? 192),
-  decayHalfLifeHours: Number(Bun.env.MEMORY_DECAY_HALF_LIFE_HOURS ?? 48),
+  decayHalfLifeHours: Number(Bun.env.MEMORY_DECAY_HALF_LIFE_HOURS ?? 336),
+  decayCurveShape: Number(Bun.env.MEMORY_DECAY_CURVE_SHAPE ?? 1.35),
+  autoArchiveOnDecay: (Bun.env.MEMORY_DECAY_AUTO_ARCHIVE ?? "false") === "true",
   minStrength: Number(Bun.env.MEMORY_MIN_STRENGTH ?? 0.05),
   archiveStrengthThreshold: Number(Bun.env.MEMORY_ARCHIVE_THRESHOLD ?? 0.08),
+  recallRefreshBaseBoost: Number(Bun.env.MEMORY_RECALL_REFRESH_BASE_BOOST ?? 0.14),
+  recallRefreshMaxBoost: Number(Bun.env.MEMORY_RECALL_REFRESH_MAX_BOOST ?? 0.42),
+  recallRefreshWindowHours: Number(Bun.env.MEMORY_RECALL_REFRESH_WINDOW_HOURS ?? 720),
   consolidateIntervalMs: Number(Bun.env.MEMORY_CONSOLIDATE_INTERVAL_MS ?? 60_000),
   decayIntervalMs: Number(Bun.env.MEMORY_DECAY_INTERVAL_MS ?? 120_000),
   queuePollIntervalMs: Number(Bun.env.MEMORY_QUEUE_POLL_MS ?? 2_000),
